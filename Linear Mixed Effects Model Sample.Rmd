@@ -1,0 +1,123 @@
+---
+title: "Linear Mixed Effects Model"
+author: "yinglin"
+date: "2025-07-08"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+## Do not touch
+
+library(readxl)    # load Excel files
+library(lme4)      # mixed-effects modeling
+library(lmerTest)  # get p-values for lmer models
+library(emmeans)   # estimated marginal means and pairwise comparisons
+library(ggplot2)   # plots
+library(dplyr)     # data manipulation
+library(tidyr)     # tidying data, not currently used
+library(stringr)   # manipulate strings, not currently used
+```
+
+## Analysis of sample data
+
+```{r read in data for model 1, echo=FALSE}
+## Change the file path and output image path
+
+# Set the file path
+file_path <- "C:/Users/yli35/Downloads/TESTING.xlsx"
+
+# Read in files
+df <- readxl::read_excel(file_path, sheet = "Use")
+df_alt <- readxl::read_excel(file_path, sheet = "Use_norenamed")
+
+# Set path for output image
+output_image <- "C:/Users/yli35/Downloads/TESTING.png"
+```
+
+```{r model 1}
+## Do not touch
+
+# run model
+colnames(df)
+
+df$Condition <- as.factor(df$Condition)
+
+m1 <- lmer(`Radius (nm)` ~ Condition + (1 | `Field of view ID`/`Nucleus ID`), data=df)
+summary(m1)
+
+means <- lsmeansLT(m1, test.effs="Condition")
+means$rn <- row.names(means)
+print(means)
+
+pw_means <- emmeans(m1, "Condition")
+pairs(pw_means) # This line can take a few extra seconds. Totally normal.
+```
+
+```{r EDA 1, echo = FALSE}
+## Do not touch
+
+# EDA for graphing purposes - comment out when not being used
+cat("The conditions in df are:", paste(unique(df$Condition), collapse = ", "), "\n\n")
+cat("The conditions in df_alt are:", paste(unique(df_alt$Condition), collapse = ", "), "\n\n")
+cat("The number of nuclei is:", length(unique(df_alt$`Nucleus ID`)), "\n\n")
+cat("The min and max of Radius (nm) are:",
+    round(min(df_alt$`Radius (nm)`, na.rm = TRUE), 1), "and",
+    round(max(df_alt$`Radius (nm)`, na.rm = TRUE), 1), "\n")
+```
+
+```{r plot 1, echo = FALSE}
+## Change order, condition_labels, and add/subtract colors for nucleus ID in ggplot as needed
+
+# Set the order
+condition_order <- c("(+)Gluc", "(-)Gluc", "(-)ATP NaN3")
+
+# Convert to factors because we have categorical variables
+df_alt <- df_alt %>%
+  mutate(
+    `Field of view ID` = as.factor(`Field of view ID`),
+    `Nucleus ID` = as.factor(`Nucleus ID`),
+    Condition_use = as.character(Condition)  # temporarily character
+  )
+
+# Format strings
+means <- means %>%
+  mutate(
+    Condition_use = str_remove(rn, "^Condition")
+  )
+
+# Rename labels in data frames as needed
+condition_labels <- c(
+  "(+)Gluc" = "Control",
+  "(-)Gluc" = "- glucose",
+  "(-)ATP NaN3" = "+ NaN3"
+)
+
+df_alt <- df_alt %>%
+  mutate(
+    Condition_use = recode(Condition_use, !!!condition_labels),
+    Condition_use = factor(Condition_use, levels = condition_labels)
+  )
+
+means <- means %>%
+  mutate(
+    Condition_use = recode(Condition_use, !!!condition_labels),
+    Condition_use = factor(Condition_use, levels = condition_labels)
+  ) %>%
+  filter(!is.na(Condition_use))  # drop NA rows in case there are any
+
+# Plot
+ggplot(df_alt, aes(x = Condition_use, y = `Radius (nm)`)) +  # use factor variable directly
+  geom_jitter(aes(shape = `Field of view ID`, color = `Nucleus ID`), alpha = 0.5, size = 3) +  # jittered points
+  geom_point(data = means, aes(y = Estimate), color = "gray0", size = 3, shape = 15) +        # means are squares
+  geom_errorbar(data = means, aes(y = Estimate, ymin = lower, ymax = upper), width = 0.1) +   # error bars
+  scale_color_manual(values = c("1" = "pink", "2" = "forestgreen", "3" = "navy")) +                  # colors for Nucleus ID
+  scale_y_continuous(limits = c(30, 80), breaks = seq(30, 80, 10)) +                        # y-axis limits & breaks
+  theme_minimal() +                                                                           
+  theme(
+    text = element_text(size = 26),                                                           # text size
+    axis.text.x = element_text(angle = 45, hjust = 1)                                         # tilt x-axis labels 45 degrees
+  ) +                                 
+  labs(x = " ")                                                                               # no x-axis label
+
+ ggsave(output_image, dpi=300, bg="white", width=8, height=8)
+```
